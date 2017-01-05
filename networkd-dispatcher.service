@@ -4,3 +4,6 @@ Description=Dispatcher daemon for systemd-networkd
 [Service]
 Type=simple
 ExecStart=/usr/bin/networkd-dispatcher
+
+[Install]
+WantedBy=multi-user.target
