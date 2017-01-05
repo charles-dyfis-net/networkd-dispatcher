@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+# networkd-dispatcher
+#   Dispatcher service for systemd-networkd, borrowed heavily from
+#   networkd-notify.
 # Copyright(c) 2016 by wave++ "Yuri D'Elia" <wavexx@thregr.org>
 # Distributed under GPLv3+ (see COPYING) WITHOUT ANY WARRANTY.
 # Copyright(c) 2017 by craftyguy "Clayton Craft" <clayton@craftyguy.net>
@@ -33,13 +36,7 @@ STATE_MAP = {'off': 'offline',
 
 # Nifty globals
 IFACE_MAP = {}
-NOTIFY_IF = None
 SCRIPT_DIR = './etc/networkd-dispatcher'
-
-
-#def notify(title, text, time=1000):
-#    NOTIFY_IF.Notify(APP_NAME, 0, '', title, text, '', '', time)
-
 
 def resolve_path(path_list):
     for path in path_list:
@@ -94,11 +91,12 @@ def get_wlan_essid(iface):
 def get_scripts_list(state):
     script_list = list()
     path = SCRIPT_DIR + "/" + state + ".d"
-    print(path)
     for entry in os.scandir(path):
         if entry.is_file():
+            # Make sure script can be executed
             if not stat.S_IXUSR & entry.stat().st_mode:
                 print("Unable to execute script, check file mode: " + entry.path)
+            # Make sure script is owned by root
             elif entry.stat().st_uid != 0 or entry.stat().st_gid != 0:
                 print("Unable to execute script, check file perms: " + entry.path)
             else:
@@ -140,15 +138,30 @@ def property_changed(typ, data, _, path):
                     continue
                 addrs.append(addr)
     script_list = get_scripts_list(state)
-    print(script_list)
     if script_list is None:
         return
+
+    # Set script env. variables
+    script_env = {
+        **os.environ,
+        'IFACE': iface,
+        'STATE': str(state),
+    }
+    if 'ESSID' in data:
+        script_env['ESSID'] = data['ESSID']
+    if 'Address' in data:
+        # only expose the first address
+        # TODO: create array to send, or ??
+        script_env['ADDR'] = data['Address'][0]
+
+    # run all valid scripts in the list
+    #TODO: At some point, check return code and handle errors
     for script in script_list:
-        ret = subprocess.run(script, shell=True, check=True)
+        ret = subprocess.Popen(script, env=script_env, shell=True).wait()
 
 
 if __name__ == '__main__':
-    ap = argparse.ArgumentParser(description='networkd notification daemon')
+    ap = argparse.ArgumentParser(description='networkd dispatcher daemon')
     args = ap.parse_args()
 
     NETWORKCTL = resolve_path(NETWORKCTL)
@@ -164,12 +177,6 @@ if __name__ == '__main__':
                             bus_name='org.freedesktop.network1',
                             signal_name='PropertiesChanged',
                             path_keyword='path')
-
-    # dbus notify interface
-    #bus = dbus.SessionBus()
-    #NOTIFY_IF = dbus.Interface(bus.get_object('org.freedesktop.Notifications',
-    #                      '/org/freedesktop/Notifications'),
-    #                      'org.freedesktop.Notifications')
 
     # main loop
     mainloop = glib.MainLoop()
