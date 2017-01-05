@@ -27,7 +27,7 @@ Scripts are executed in the alpha-numeric order in which they are named, startin
 
 ### Arch Linux
 
-*Stay tuned for a package in AUR*
+This package can be [installed from AUR](https://aur.archlinux.org/packages/networkd-dispatcher/).
 
 ### Other Linux Folks
 
@@ -39,6 +39,12 @@ Create the appropriate directory structure:
 
 Install networkd-dispatcher.service and start it. If networkd-dispatcher was not copied to /usr/bin, then edit service file to reflect the appropriate path.
 
+
+### TODO
+
+- [ ] create manpage
+
+- [ ] more stuff to come, I'm sure of it!
 
 ## Credits
 
