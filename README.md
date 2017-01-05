@@ -1,10 +1,14 @@
 # networkd-dispatcher
-Dispatcher service for systemd-networkd connection status changes
 
+Networkd-dispatcher is a dispatcher daemon for systemd-networkd connection status changes. This daemon is similar to [NetworkManager-dispatcher](https://developer.gnome.org/NetworkManager/unstable/NetworkManager.html), but is much more limited in the types of events it supports due to the limited nature of systemd-networkd. 
+
+Desired actions (scripts) are placed into directories that reflect [systemd-networkd operational states](https://www.freedesktop.org/software/systemd/man/networkctl.html), and are executed when the daemon receives the relevant event from systemd-networkd.
+
+The deamon listens for signals from systemd-networkd over dbus, so it should be very light on resources (e.g. no polling). It is meant to be run as a system-wide daemon (as root). This allows it to be used for tasks such as starting a VPN after a connection is established.
 
 ## Usage
 
-Application expects that scripts are executable and owned by root (gid = uid = 0), and will not execute scripts that are otherwise.
+The deamon expects that scripts are 1) executable and 2) owned by root (gid = uid = 0), and will not execute scripts that are otherwise.
 
 Scripts can be installed into these directories under ```/etc/networkd-dispatcher```:
 
@@ -22,6 +26,15 @@ networkd-dispatcher will execute any valid scripts in the directory that reflect
 
 Scripts are executed in the alpha-numeric order in which they are named, starting with 0 and ending with z. For example, a script named ```50runme``` would run before ```99runmenext```.
 
+Scripts are executed with some environment variables set. Some of these variables may not be set, since it's dependent upon the type of event. These can be used by scripts to conditionally take action based on a specific interface, state, etc.
+
+- ```IFACE``` - interface that triggered the event
+
+- ```STATE``` - systemd-networkd state received by daemon
+
+- ```ESSID``` - for wlan connections, the ESSID the device is connected to
+
+- ```ADDR``` - the ip address of the device
 
 ## Installation
 
@@ -30,6 +43,17 @@ Scripts are executed in the alpha-numeric order in which they are named, startin
 This package can be [installed from AUR](https://aur.archlinux.org/packages/networkd-dispatcher/).
 
 ### Other Linux Folks
+
+Requirements:
+
+- python 3
+
+- python-gobject
+
+- python-dbus
+
+- wireless_tools
+
 
 Copy networkd-dispatcher to /usr/bin.
 
@@ -44,8 +68,12 @@ Install networkd-dispatcher.service and start it. If networkd-dispatcher was not
 
 - [ ] create manpage
 
+- [ ] allow running scripts as non-root user (specify user in a .conf file)
+
+- [ ] add conf file (/etc/networkd-dispatcher/config) for storing custom configuration
+
 - [ ] more stuff to come, I'm sure of it!
 
 ## Credits
 
-A large portion of the code was leveraged from [networkd-notify](https://github.com/wavexx/networkd-notify), which was written by wave++ "Yuri D'Elia" <wavexx@thregr.org>
+A large portion of the code was leveraged from [networkd-notify](https://github.com/wavexx/networkd-notify), which was written by wavexx (Yuri D'Elia)
