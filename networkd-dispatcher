@@ -29,14 +29,10 @@ IWCONFIG = ['/usr/bin/iwconfig', '/sbin/iwconfig']
 APP_NAME  = 'networkd'
 
 STATE_IGN = {'carrier', 'degraded'}
-STATE_MAP = {'off': 'offline',
-             'no-carrier': 'disconnected',
-             'dormant': 'configuring',
-             'routable': 'online'}
 
 # Nifty globals
 IFACE_MAP = {}
-SCRIPT_DIR = './etc/networkd-dispatcher'
+SCRIPT_DIR = '/etc/networkd-dispatcher'
 
 def resolve_path(path_list):
     for path in path_list:
@@ -111,7 +107,7 @@ def property_changed(typ, data, _, path):
         return
     if 'OperationalState' not in data:
         return
-    state = data['OperationalState'] 
+    state = data['OperationalState']
     if state in STATE_IGN:
         return
 
