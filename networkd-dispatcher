@@ -114,7 +114,11 @@ def property_changed(typ, data, _, path):
     # http://thread.gmane.org/gmane.comp.sysutils.systemd.devel/36460
     idx = path[32:]
     idx = int(chr(int(idx[:2], 16)) + idx[2:])
-    iface = IFACE_MAP[idx]
+    try:
+        iface = IFACE_MAP[idx]
+    except:
+        # Received an index for an interface that no longer exists, so ignore it
+        return
 
     if state == 'routable':
         data = get_iface_data(iface)
