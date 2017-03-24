@@ -34,7 +34,11 @@ Scripts are executed with some environment variables set. Some of these variable
 
 - ```ESSID``` - for wlan connections, the ESSID the device is connected to
 
-- ```ADDR``` - the ip address of the device
+- ```ADDR``` - the ipv4 address of the device
+
+- ```IP_ADDRS``` - array of ipv4 address(es) assigned to the device
+
+- ```IP6_ADDRS``` - array of ipv6 address(es) assigned to the device
 
 ## Installation
 

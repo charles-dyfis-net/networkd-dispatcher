@@ -150,9 +150,19 @@ def property_changed(typ, data, _, path):
     if 'ESSID' in data:
         script_env['ESSID'] = data['ESSID']
     if 'Address' in data:
-        # only expose the first address
-        # TODO: create array to send, or ??
+        # Construct Bash shell arrays of ipv4 and ipv6 addresses
+        ipaddrs = '('
+        ip6addrs = '('
+        for addr in data['Address']:
+            if ':' in addr:
+                ip6addrs += ' ' + addr + ' '
+            elif '.' in addr:
+                ipaddrs += ' ' + addr + ' '
+        ip6addrs += ')'
+        ipaddrs += ')'
         script_env['ADDR'] = data['Address'][0]
+        script_env['IP_ADDRS'] = ipaddrs
+        script_env['IP6_ADDRS'] = ip6addrs
 
     # run all valid scripts in the list
     #TODO: At some point, check return code and handle errors
