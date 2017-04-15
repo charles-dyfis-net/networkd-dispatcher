@@ -12,6 +12,7 @@
 from __future__ import print_function, division, generators, unicode_literals
 
 import argparse
+import json
 import subprocess
 import os
 import stat
@@ -146,6 +147,7 @@ def property_changed(typ, data, _, path):
         **os.environ,
         'IFACE': iface,
         'STATE': str(state),
+        'json': json.dumps(data),
     }
     if 'ESSID' in data:
         script_env['ESSID'] = data['ESSID']
