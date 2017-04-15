@@ -162,8 +162,6 @@ def property_changed(typ, data, _, path):
         script_env['ADDR'] = data['Address'][0]
         script_env['IP_ADDRS'] = ipaddrs
         script_env['IP6_ADDRS'] = ip6addrs
-        print(ipaddrs)
-        print(ip6addrs)
 
     # run all valid scripts in the list
     #TODO: At some point, check return code and handle errors
