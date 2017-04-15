@@ -150,19 +150,21 @@ def property_changed(typ, data, _, path):
     if 'ESSID' in data:
         script_env['ESSID'] = data['ESSID']
     if 'Address' in data:
-        # Construct Bash shell arrays of ipv4 and ipv6 addresses
-        ipaddrs = '('
-        ip6addrs = '('
+        # Construct space-delimited strings of ipv4 and ipv6 addresses
+        ipaddrs = ''
+        ip6addrs = ''
         for addr in data['Address']:
+            # If there's a colon, it's got to be ipv6, right?
             if ':' in addr:
                 ip6addrs += ' ' + addr + ' '
+            # And a dot must indicate ipv4, right??
             elif '.' in addr:
                 ipaddrs += ' ' + addr + ' '
-        ip6addrs += ')'
-        ipaddrs += ')'
         script_env['ADDR'] = data['Address'][0]
         script_env['IP_ADDRS'] = ipaddrs
         script_env['IP6_ADDRS'] = ip6addrs
+        print(ipaddrs)
+        print(ip6addrs)
 
     # run all valid scripts in the list
     #TODO: At some point, check return code and handle errors

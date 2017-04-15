@@ -36,9 +36,12 @@ Scripts are executed with some environment variables set. Some of these variable
 
 - ```ADDR``` - the ipv4 address of the device
 
-- ```IP_ADDRS``` - array of ipv4 address(es) assigned to the device
+- ```IP_ADDRS``` - space-delimited string of ipv4 address(es) assigned to the device (see note below)
 
-- ```IP6_ADDRS``` - array of ipv6 address(es) assigned to the device
+- ```IP6_ADDRS``` - space-delimited string of ipv6 address(es) assigned to the device (see note below)
+
+*Note: For `IP_ADDRS` and `IP6_ADDRS`, the space-delimited string can be read into a BASH array like this:
+```read -r -a ip_addrs <<<"$IP_ADDRS"```
 
 ## Installation
 
