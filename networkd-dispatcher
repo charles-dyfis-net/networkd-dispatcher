@@ -169,7 +169,7 @@ def property_changed(typ, data, _, path):
     # run all valid scripts in the list
     #TODO: At some point, check return code and handle errors
     for script in script_list:
-        ret = subprocess.Popen(script, env=script_env, shell=True).wait()
+        ret = subprocess.Popen([script], env=script_env).wait()
 
 
 if __name__ == '__main__':
