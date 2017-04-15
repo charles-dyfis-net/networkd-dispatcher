@@ -129,14 +129,13 @@ def property_changed(typ, data, _, path):
 
         # filter out uninteresting addresses
         addrs = []
-        if type(data['Address']) != list:
-            addrs = [data['Address']]
-        else:
-            for addr in data['Address']:
-                if addr.startswith('127.') or \
-                   addr.startswith('fe80:'):
-                    continue
-                addrs.append(addr)
+        if isinstance(data['Address'], (str, bytes)):
+            data['Address'] = [data['Address']]
+        for addr in data['Address']:
+            if addr.startswith('127.') or \
+               addr.startswith('fe80:'):
+                continue
+            addrs.append(addr)
     script_list = get_scripts_list(state)
     if script_list is None:
         return
