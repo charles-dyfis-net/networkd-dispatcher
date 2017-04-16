@@ -88,16 +88,18 @@ def get_wlan_essid(iface):
 def get_scripts_list(state):
     script_list = list()
     path = SCRIPT_DIR + "/" + state + ".d"
-    for entry in os.scandir(path):
-        if entry.is_file():
+    for filename in os.listdir(path):
+        pathname = os.path.join(path, filename)
+        if os.path.isfile(pathname):
+            entry = os.stat(pathname)
             # Make sure script can be executed
-            if not stat.S_IXUSR & entry.stat().st_mode:
-                print("Unable to execute script, check file mode: " + entry.path)
+            if not stat.S_IXUSR & entry.st_mode:
+                print("Unable to execute script, check file mode: " + pathname)
             # Make sure script is owned by root
-            elif entry.stat().st_uid != 0 or entry.stat().st_gid != 0:
-                print("Unable to execute script, check file perms: " + entry.path)
+            elif entry.st_uid != 0 or entry.st_gid != 0:
+                print("Unable to execute script, check file perms: " + pathname)
             else:
-                script_list.append(entry.path)
+                script_list.append(pathname)
     return sorted(script_list)
 
 
@@ -142,12 +144,12 @@ def property_changed(typ, data, _, path):
         return
 
     # Set script env. variables
-    script_env = {
-        **os.environ,
+    script_env = dict(os.environ)
+    script_env.update({
         'IFACE': iface,
         'STATE': str(state),
         'json': json.dumps(data),
-    }
+    })
     if 'ESSID' in data:
         script_env['ESSID'] = data['ESSID']
     if 'Address' in data:
