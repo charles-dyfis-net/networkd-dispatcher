@@ -55,7 +55,7 @@ This package can be [installed from AUR](https://aur.archlinux.org/packages/netw
 
 Requirements:
 
-- python 3
+- >= python 3.4
 
 - python-gobject
 
