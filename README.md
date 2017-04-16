@@ -40,6 +40,8 @@ Scripts are executed with some environment variables set. Some of these variable
 
 - ```IP6_ADDRS``` - space-delimited string of ipv6 address(es) assigned to the device (see note below)
 
+- ```json``` - A JSON encoding of this program's interpretation of `networkctl status "$IFACE"`, when the event is one for which such information is available; for debug logs or inspection with JSON-aware tools such as `jq`. Exact structure details are implementation-defined and liable to change.
+
 *Note: For `IP_ADDRS` and `IP6_ADDRS`, the space-delimited string can be read into a BASH array like this:
 ```read -r -a ip_addrs <<<"$IP_ADDRS"```
 
