@@ -12,6 +12,7 @@
 from __future__ import print_function, division, generators, unicode_literals
 
 import argparse
+import json
 import subprocess
 import os
 import stat
@@ -131,14 +132,13 @@ def property_changed(typ, data, _, path):
 
         # filter out uninteresting addresses
         addrs = []
-        if type(data['Address']) != list:
-            addrs = [data['Address']]
-        else:
-            for addr in data['Address']:
-                if addr.startswith('127.') or \
-                   addr.startswith('fe80:'):
-                    continue
-                addrs.append(addr)
+        if isinstance(data['Address'], (str, bytes)):
+            data['Address'] = [data['Address']]
+        for addr in data['Address']:
+            if addr.startswith('127.') or \
+               addr.startswith('fe80:'):
+                continue
+            addrs.append(addr)
     script_list = get_scripts_list(state)
     if script_list is None:
         return
@@ -148,20 +148,21 @@ def property_changed(typ, data, _, path):
     script_env.update({
         'IFACE': iface,
         'STATE': str(state),
+        'json': json.dumps(data),
     })
     if 'ESSID' in data:
         script_env['ESSID'] = data['ESSID']
     if 'Address' in data:
-        # Construct Bash shell arrays of ipv4 and ipv6 addresses
-        ipaddrs = '('
-        ip6addrs = '('
+        # Construct space-delimited strings of ipv4 and ipv6 addresses
+        ipaddrs = ''
+        ip6addrs = ''
         for addr in data['Address']:
+            # If there's a colon, it's got to be ipv6, right?
             if ':' in addr:
                 ip6addrs += ' ' + addr + ' '
+            # And a dot must indicate ipv4, right??
             elif '.' in addr:
                 ipaddrs += ' ' + addr + ' '
-        ip6addrs += ')'
-        ipaddrs += ')'
         script_env['ADDR'] = data['Address'][0]
         script_env['IP_ADDRS'] = ipaddrs
         script_env['IP6_ADDRS'] = ip6addrs

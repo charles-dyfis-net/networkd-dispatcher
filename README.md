@@ -36,9 +36,14 @@ Scripts are executed with some environment variables set. Some of these variable
 
 - ```ADDR``` - the ipv4 address of the device
 
-- ```IP_ADDRS``` - array of ipv4 address(es) assigned to the device
+- ```IP_ADDRS``` - space-delimited string of ipv4 address(es) assigned to the device (see note below)
 
-- ```IP6_ADDRS``` - array of ipv6 address(es) assigned to the device
+- ```IP6_ADDRS``` - space-delimited string of ipv6 address(es) assigned to the device (see note below)
+
+- ```json``` - A JSON encoding of this program's interpretation of `networkctl status "$IFACE"`, when the event is one for which such information is available; for debug logs or inspection with JSON-aware tools such as `jq`. Exact structure details are implementation-defined and liable to change.
+
+*Note: For `IP_ADDRS` and `IP6_ADDRS`, the space-delimited string can be read into a BASH array like this:
+```read -r -a ip_addrs <<<"$IP_ADDRS"```
 
 ## Installation
 
@@ -78,6 +83,12 @@ Install networkd-dispatcher.service and start it. If networkd-dispatcher was not
 
 - [ ] more stuff to come, I'm sure of it!
 
-## Credits
+## Contributors
+
+- craftyguy (Clayton Craft)
+
+- charles-dyfis-net (Charles Duffy)
+
+
 
 A large portion of the code was leveraged from [networkd-notify](https://github.com/wavexx/networkd-notify), which was written by wavexx (Yuri D'Elia)
