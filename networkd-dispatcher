@@ -12,6 +12,7 @@
 from __future__ import print_function, division, generators, unicode_literals
 
 import argparse
+import collections
 import json
 import subprocess
 import os
@@ -30,6 +31,7 @@ IWCONFIG = ['/usr/bin/iwconfig', '/sbin/iwconfig']
 APP_NAME  = 'networkd'
 
 STATE_IGN = {'carrier', 'degraded'}
+SINGLETONS = {'Type', 'ESSID', 'OperationalState'}
 
 # Nifty globals
 IFACE_MAP = {}
@@ -52,19 +54,17 @@ def update_iface_map():
 
 def get_iface_data(iface):
     out = subprocess.check_output([NETWORKCTL, 'status', '--no-pager', '--no-legend', '--', iface])
-    data = {}
+    data = collections.defaultdict(list)
     oldk = None
     for line in out.split(b'\n')[1:-1]:
         line = line.decode('ascii')
         k = line[:16].strip() or oldk
         oldk = k
         v = line[18:].strip()
-        if k not in data:
+        if k in SINGLETONS:
             data[k] = v
-        elif type(data[k]) == list:
-            data[k].append(v)
         else:
-            data[k] = [data[k], v]
+            data[k].append(v)
     return data
 
 
@@ -132,8 +132,6 @@ def property_changed(typ, data, _, path):
 
         # filter out uninteresting addresses
         addrs = []
-        if isinstance(data.get('Address'), (str, bytes)):
-            data['Address'] = [data['Address']]
         for addr in data.get('Address', ()):
             if addr.startswith('127.') or \
                addr.startswith('fe80:'):
