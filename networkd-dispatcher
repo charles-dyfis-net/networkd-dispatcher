@@ -132,9 +132,9 @@ def property_changed(typ, data, _, path):
 
         # filter out uninteresting addresses
         addrs = []
-        if isinstance(data['Address'], (str, bytes)):
+        if isinstance(data.get('Address'), (str, bytes)):
             data['Address'] = [data['Address']]
-        for addr in data['Address']:
+        for addr in data.get('Address', ()):
             if addr.startswith('127.') or \
                addr.startswith('fe80:'):
                 continue
