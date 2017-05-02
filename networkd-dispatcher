@@ -17,43 +17,57 @@ import json
 import subprocess
 import os
 import stat
+import logging
 
-import gi
 from gi.repository import GLib as glib
 
 import dbus
 import dbus.mainloop.glib
 
-
-# Constants
-NETWORKCTL = ['/usr/bin/networkctl', '/bin/networkctl']
-IWCONFIG = ['/usr/bin/iwconfig', '/sbin/iwconfig']
-APP_NAME  = 'networkd'
-
-STATE_IGN = {'carrier', 'degraded'}
-SINGLETONS = {'Type', 'ESSID', 'OperationalState'}
-
-# Nifty globals
-IFACE_MAP = {}
-SCRIPT_DIR = '/etc/networkd-dispatcher'
-
+# FIXME: Why are we doing this?
 def resolve_path(path_list):
     for path in path_list:
         if os.path.exists(path):
             return path
     return None
 
+# Constants
+NETWORKCTL_PATHS = ['/usr/bin/networkctl', '/bin/networkctl']
+IWCONFIG_PATHS = ['/usr/bin/iwconfig', '/sbin/iwconfig']
+NETWORKCTL = resolve_path(NETWORKCTL_PATHS)
+IWCONFIG = resolve_path(IWCONFIG_PATHS)
+DEFAULT_SCRIPT_DIR = '/etc/networkd-dispatcher'
 
-def update_iface_map():
+STATE_IGN = {'carrier', 'degraded', None}
+SINGLETONS = {'Type', 'ESSID', 'OperationalState'}
+
+logger = logging.getLogger('networkd-dispatcher')
+
+
+def unquote(buf, char='\\'):
+    """Remove escape characters from iwconfig ESSID output"""
+    idx = 0
+    while True:
+        idx = buf.find(char, idx)
+        if idx < 0:
+            break
+        buf = buf[:idx] + buf[idx+1:]
+        idx += 1
+    return buf
+
+NetworkctlListState = collections.namedtuple('NetworkctlListState', ['idx', 'link', 'type', 'operational', 'setup'])
+def get_networkctl_list():
+    """Update the mapping from interface index numbers to state"""
     out = subprocess.check_output([NETWORKCTL, 'list', '--no-pager', '--no-legend'])
-    IFACE_MAP.clear()
+    result = {}
     for line in out.split(b'\n')[:-1]:
         fields = line.decode('ascii').split()
-        IFACE_MAP[int(fields[0])] = fields[1]
+        result[int(fields[0])] = NetworkctlListState(*fields)
+    return result
 
-
-def get_iface_data(iface):
-    out = subprocess.check_output([NETWORKCTL, 'status', '--no-pager', '--no-legend', '--', iface])
+def get_networkctl_status(iface_name):
+    """Return a dictionary mapping keys to lists (or strings if in SINGLETONS)"""
+    out = subprocess.check_output([NETWORKCTL, 'status', '--no-pager', '--no-legend', '--', iface_name])
     data = collections.defaultdict(list)
     oldk = None
     for line in out.split(b'\n')[1:-1]:
@@ -67,27 +81,18 @@ def get_iface_data(iface):
             data[k].append(v)
     return data
 
-
-def unquote(buf, char='\\'):
-    idx = 0
-    while True:
-        idx = buf.find(char, idx)
-        if idx < 0: break
-        buf = buf[:idx] + buf[idx+1:]
-        idx += 1
-    return buf
-
-
-def get_wlan_essid(iface):
-    out = subprocess.check_output([IWCONFIG, '--', iface])
+def get_wlan_essid(iface_name):
+    """Given an interface name, return its ESSID"""
+    out = subprocess.check_output([IWCONFIG, '--', iface_name])
     line = out.split(b'\n')[0].decode('ascii')
     essid = line[line.find('ESSID:')+7:-3]
     return unquote(essid)
 
-
-def get_scripts_list(state):
-    script_list = list()
-    path = SCRIPT_DIR + "/" + state + ".d"
+def scripts_in_path(path):
+    """Given a directory name, return a sorted list of executables contained therein"""
+    script_list = []
+    if not os.path.exists(path):
+        return []
     for filename in os.listdir(path):
         pathname = os.path.join(path, filename)
         if os.path.isfile(pathname):
@@ -102,93 +107,166 @@ def get_scripts_list(state):
                 script_list.append(pathname)
     return sorted(script_list)
 
+AddressList = collections.namedtuple('AddressList', ['ipv4', 'ipv6'])
+def parse_address_strings(addrs):
+    """Given a list of addresses, discard uninteresting ones, and sort the rest into IPv4 vs IPv6"""
+    ip4addrs = []
+    ip6addrs = []
+    for addr in addrs:
+        if addr.startswith('127.') or \
+           addr.startswith('fe80:'):
+            continue
+        if ':' in addr:
+            ip6addrs.append(addr)
+        elif '.' in addr:
+            ip4addrs.append(addr)
+    return AddressList(ip4addrs, ip6addrs)
 
-def property_changed(typ, data, _, path):
-    if typ != 'org.freedesktop.network1.Link':
-        return
-    if not path.startswith('/org/freedesktop/network1/link/_'):
-        return
-    if 'OperationalState' not in data:
-        return
-    state = data['OperationalState']
-    if state in STATE_IGN:
-        return
-
-    # http://thread.gmane.org/gmane.comp.sysutils.systemd.devel/36460
-    idx = path[32:]
-    idx = int(chr(int(idx[:2], 16)) + idx[2:])
-    try:
-        iface = IFACE_MAP[idx]
-    except:
-        # Received an index for an interface that no longer exists, so ignore it
-        return
-
+def get_interface_data(iface_name, state):
+    """Return JSON-serializable data representing all state needed to run hooks for the given interface"""
+    data = {}
     if state == 'routable':
-        data = get_iface_data(iface)
+        data.update(get_networkctl_status(iface_name))
+    if data['Type'] == 'wlan':
+        data['ESSID'] = get_wlan_essid(iface_name)
+    data['State'] = state
+    return data
 
-        # fetch ESSID
-        if data['Type'] == 'wlan':
-            data['ESSID'] = get_wlan_essid(iface)
+class Dispatcher(object):
+    def __init__(self, script_dir=DEFAULT_SCRIPT_DIR):
+        self.iface_map = get_networkctl_list()
+        self.prior_states = {}
+        self.script_dir = script_dir
 
-        # filter out uninteresting addresses
-        addrs = []
-        for addr in data.get('Address', ()):
-            if addr.startswith('127.') or \
-               addr.startswith('fe80:'):
-                continue
-            addrs.append(addr)
-    script_list = get_scripts_list(state)
-    if script_list is None:
-        return
+    def register(self, bus=None):
+        """Register this dispatcher to handle events from the given bus"""
+        if bus is None:
+            bus = dbus.SystemBus()
+        bus.add_signal_receiver(self._receive_signal,
+                                bus_name='org.freedesktop.network1',
+                                signal_name='PropertiesChanged',
+                                path_keyword='path')
 
-    # Set script env. variables
-    script_env = dict(os.environ)
-    script_env.update({
-        'IFACE': iface,
-        'STATE': str(state),
-        'json': json.dumps(data),
-    })
-    if 'ESSID' in data:
-        script_env['ESSID'] = data['ESSID']
-    if 'Address' in data:
-        # Construct space-delimited strings of ipv4 and ipv6 addresses
-        ipaddrs = ''
-        ip6addrs = ''
-        for addr in data['Address']:
-            # If there's a colon, it's got to be ipv6, right?
-            if ':' in addr:
-                ip6addrs += ' ' + addr + ' '
-            # And a dot must indicate ipv4, right??
-            elif '.' in addr:
-                ipaddrs += ' ' + addr + ' '
-        script_env['ADDR'] = data['Address'][0]
-        script_env['IP_ADDRS'] = ipaddrs
-        script_env['IP6_ADDRS'] = ip6addrs
+    def trigger_all(self):
+        """Immediately invoke all scripts for the last known (or initial) states for each interface"""
+        logger.info('Triggering scripts for last-known state for all interfaces')
+        for iface in self.iface_map.values():
+            iface_name = iface.link
+            state = self.prior_states.get(iface_name, iface.operational)
+            self.handle_state(iface_name, state)
 
-    # run all valid scripts in the list
-    #TODO: At some point, check return code and handle errors
-    for script in script_list:
-        ret = subprocess.Popen(script, env=script_env).wait()
+    def get_scripts_list(self, state):
+        """Return scripts for the given state"""
+        return scripts_in_path(self.script_dir + "/" + state + ".d")
+
+    def handle_state(self, iface_name, state):
+        # Already handled this state? Do nothing.
+        if self.prior_states.get(iface_name) == state:
+            logger.debug('Ignoring notification for interface %r entering state %r: already known', iface_name, state)
+            return
+        self.prior_states[iface_name] = state
+
+        if state in STATE_IGN:
+            logger.debug('Ignored OperationalState %r seen, skipping', state)
+            return
+
+        # No actions to take? Do nothing.
+        script_list = self.get_scripts_list(state)
+        if script_list is None:
+            logger.debug('Ignoring notification for interface %r entering state %r: no triggers', iface_name, state)
+            return
+
+        # Collect data
+        data = get_interface_data(iface_name, state)
+        (v4addrs, v6addrs) = parse_address_strings(data.get('Address', ()))
+
+        # Set script env. variables
+        script_env = dict(os.environ)
+        script_env.update({
+            'ADDR': (data.get('Address', ['']) + [''])[0],
+            'ESSID': data.get('ESSID', ''),
+            'IP_ADDRS': ' '.join(v4addrs),
+            'IP6_ADDRS': ' '.join(v6addrs),
+            'IFACE': iface_name,
+            'STATE': str(state),
+            'json': json.dumps(data),
+        })
+
+        # run all valid scripts in the list
+        #TODO: At some point, check return code and handle errors
+        logger.debug('Running triggers for interface %r entering state %r with environment %r', iface_name, state, script_env)
+        for script in script_list:
+            ret = subprocess.Popen(script, env=script_env).wait()
+            if ret != 0:
+                logger.warning('Exit status %r from script %r invoked with environment %r', ret, script, script_env)
+
+    def _receive_signal(self, typ, data, _, path):
+        logger.debug('Signal: typ=%r, data=%r, path=%r', typ, data, path)
+        if typ != 'org.freedesktop.network1.Link':
+            logger.error('Ignoring signal received with unexpected typ %r', typ)
+            return
+        if not path.startswith('/org/freedesktop/network1/link/_'):
+            logger.error('Ignoring signal received with unexpected path %r', path)
+            return
+
+        # Detect necessity of reloading map *before* filtering ignored states
+        # http://thread.gmane.org/gmane.comp.sysutils.systemd.devel/36460
+        idx = path[32:]
+        idx = int(chr(int(idx[:2], 16)) + idx[2:])
+        if idx not in self.iface_map:
+            # Try to reload configuration if even an ignored message is seen
+            logger.warning('Unknown index %r seen, reloading interface list', idx)
+            self.iface_map = get_networkctl_list()
+
+        try:
+            iface_name = self.iface_map[idx].link
+        except KeyError:
+            # Presumptive race condition: We reloaded, but the index is still invalid
+            logger.error('Unknown interface index %r seen even after reload', idx)
+            return
+
+        state = data.get('OperationalState', None)
+        if state is not None:
+            self.handle_state(iface_name, state)
 
 
-if __name__ == '__main__':
+def main():
     ap = argparse.ArgumentParser(description='networkd dispatcher daemon')
+    ap.add_argument('-T', '--run-startup-triggers', action='store_true',
+        help='Generate events reflecting preexisting state and behavior on startup [default: %(default)s]')
+    ap.add_argument('-v', '--verbose', action='count', default=0,
+        help='Increment verbosity level once per call')
+    ap.add_argument('-q', '--quiet', action='count', default=0,
+        help='Decrement verbosity level once per call')
     args = ap.parse_args()
 
-    NETWORKCTL = resolve_path(NETWORKCTL)
-    IWCONFIG = resolve_path(IWCONFIG)
+    verbosity_num = (args.verbose - args.quiet)
+    if verbosity_num <= -2:
+        log_level = logging.CRITICAL
+    elif verbosity_num <= -1:
+        log_level = logging.ERROR
+    elif verbosity_num == 0:
+        log_level = logging.WARNING
+    elif verbosity_num == 1:
+        log_level = logging.INFO
+    else:
+        log_level = logging.DEBUG
+    logging.basicConfig(level=log_level)
 
-    # interfaces never change at runtime, right??
-    update_iface_map()
-
-    # listen on for networkd events
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
-    bus = dbus.SystemBus()
-    bus.add_signal_receiver(property_changed,
-                            bus_name='org.freedesktop.network1',
-                            signal_name='PropertiesChanged',
-                            path_keyword='path')
+
+    dispatcher = Dispatcher()
+    dispatcher.register()
+
+    # After configuring the receiver, run initial operations
+    if args.run_startup_triggers:
+        dispatcher.trigger_all()
 
     # main loop
     mainloop = glib.MainLoop()
     mainloop.run()
+
+if __name__ == '__main__':
+    main()
+
+# vim: ai et sts=4 sw=4 ts=4
