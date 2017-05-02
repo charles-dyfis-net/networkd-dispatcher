@@ -214,7 +214,7 @@ def sd_notify(unset_environment, state):
     if sock:
         sock.close()
     if unset_environment:
-        if 'NOFITY_SOCKET' in os.environ:
+        if 'NOTIFY_SOCKET' in os.environ:
             del os.environ['NOTIFY_SOCKET']
 
     return 0
