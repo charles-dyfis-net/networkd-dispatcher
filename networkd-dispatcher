@@ -13,10 +13,14 @@ from __future__ import print_function, division, generators, unicode_literals
 
 import argparse
 import collections
+import errno
 import json
 import subprocess
 import os
+import signal
+import socket
 import stat
+import sys
 
 import gi
 from gi.repository import GLib as glib
@@ -36,6 +40,15 @@ SINGLETONS = {'Type', 'ESSID', 'OperationalState'}
 # Nifty globals
 IFACE_MAP = {}
 SCRIPT_DIR = '/etc/networkd-dispatcher'
+
+
+def log(msg):
+    """Print & flush msg to stdout.
+    This solves printing to stdout with systemd's journal
+    """
+    print(msg)
+    sys.stdout.flush()
+
 
 def resolve_path(path_list):
     for path in path_list:
@@ -94,10 +107,10 @@ def get_scripts_list(state):
             entry = os.stat(pathname)
             # Make sure script can be executed
             if not stat.S_IXUSR & entry.st_mode:
-                print("Unable to execute script, check file mode: " + pathname)
+                log("Unable to execute script, check file mode: " + pathname)
             # Make sure script is owned by root
             elif entry.st_uid != 0 or entry.st_gid != 0:
-                print("Unable to execute script, check file perms: " + pathname)
+                log("Unable to execute script, check file perms: " + pathname)
             else:
                 script_list.append(pathname)
     return sorted(script_list)
@@ -171,6 +184,42 @@ def property_changed(typ, data, _, path):
         ret = subprocess.Popen(script, env=script_env).wait()
 
 
+def sd_notify(unset_environment, state):
+    """Systemd sd_notify implementation for Python.
+    Note: 'state' argument should be a dictionary.
+    """
+    if not state:
+        log("sd_notify called with no state specified!")
+        return -errno.EINVAL
+    sock = None
+    try:
+        # Turn state, a dictionary, into a properly formatted string where
+        # each 'key=val' combo in the dictionary is separated by a \n
+        state_str = '\n'.join(['{0}={1}'.format(key,val) for (key,val) in state.items()])
+        env = os.environ.get('NOTIFY_SOCKET', None)
+        if not env:
+            # Process was not invoked with systemd
+            return -errno.EINVAL
+        if env[0] not in ('/', '@'):
+            log("Unable to determine NOTIFY_SOCKET")
+            return -errno.EINVAL
+        if env[0] == '@':
+            env = '\0' + env[1:]
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        if sock.sendto(bytearray(state_str, 'utf-8'), env) > 0:
+            return 1
+    except Exception as e:
+        log(e)
+
+    if sock:
+        sock.close()
+    if unset_environment:
+        if 'NOFITY_SOCKET' in os.environ:
+            del os.environ['NOTIFY_SOCKET']
+
+    return 0
+
+
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description='networkd dispatcher daemon')
     args = ap.parse_args()
@@ -180,7 +229,6 @@ if __name__ == '__main__':
 
     # interfaces never change at runtime, right??
     update_iface_map()
-
     # listen on for networkd events
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     bus = dbus.SystemBus()
@@ -191,4 +239,7 @@ if __name__ == '__main__':
 
     # main loop
     mainloop = glib.MainLoop()
+    # Signal to systemd that service is runnning
+    sd_notify(False, dict([('READY', 1)]))
     mainloop.run()
+
