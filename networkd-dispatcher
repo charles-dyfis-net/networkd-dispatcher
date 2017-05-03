@@ -319,6 +319,7 @@ def main():
 
     if NETWORKCTL is None:
         logger.critical('Unable to find networkctl command; cannot continue')
+        sd_notify(ERRNO=errno.ENOENT)
         sys.exit(1)
 
     dispatcher = Dispatcher(script_dir=args.script_dir)
