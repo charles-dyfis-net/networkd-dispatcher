@@ -40,6 +40,8 @@ NETWORKCTL = resolve_path(NETWORKCTL_PATHS)
 IWCONFIG = resolve_path(IWCONFIG_PATHS)
 DEFAULT_SCRIPT_DIR = '/etc/networkd-dispatcher'
 
+LOG_FORMAT = '%(levelname)s:%(message)s'
+
 STATE_IGN = {'carrier', 'degraded', None}
 SINGLETONS = {'Type', 'ESSID', 'OperationalState'}
 
@@ -308,7 +310,7 @@ def main():
         log_level = logging.INFO
     else:
         log_level = logging.DEBUG
-    logging.basicConfig(level=log_level)
+    logging.basicConfig(level=log_level, format=LOG_FORMAT)
 
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 
