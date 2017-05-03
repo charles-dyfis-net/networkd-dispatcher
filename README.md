@@ -26,7 +26,7 @@ networkd-dispatcher will execute any valid scripts in the directory that reflect
 
 Scripts are executed in the alpha-numeric order in which they are named, starting with 0 and ending with z. For example, a script named ```50runme``` would run before ```99runmenext```.
 
-Scripts are executed with some environment variables set. Some of these variables may not be set, since it's dependent upon the type of event. These can be used by scripts to conditionally take action based on a specific interface, state, etc.
+Scripts are executed with some environment variables set. Some of these variables may not be set or may be set to an empty value, dependent upon the type of event. These can be used by scripts to conditionally take action based on a specific interface, state, etc.
 
 - ```IFACE``` - interface that triggered the event
 
@@ -45,6 +45,30 @@ Scripts are executed with some environment variables set. Some of these variable
 *Note: For `IP_ADDRS` and `IP6_ADDRS`, the space-delimited string can be read into a BASH array like this:
 
 ```read -r -a ip_addrs <<<"$IP_ADDRS"```
+
+### Command-Line Options
+
+```
+usage: networkd-dispatcher [-h] [-S SCRIPT_DIR] [-T] [-v] [-q]
+
+networkd dispatcher daemon
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -S SCRIPT_DIR, --script-dir SCRIPT_DIR
+                        Location under which to look for scripts [default:
+                        /etc/networkd-dispatcher]
+  -T, --run-startup-triggers
+                        Generate events reflecting preexisting state and
+                        behavior on startup [default: False]
+  -v, --verbose         Increment verbosity level once per call
+  -q, --quiet           Decrement verbosity level once per call
+```
+
+Some further notes:
+
+- The intended use case of `--run-startup-triggers` is race-condition avoidance: Ensuring that triggers are belatedly run even if networkd-dispatcher is invoked after systemd-networkd has already started an interface.
+- The default log level is `WARNING`. Each use of `-v` will increment the log level (towards `INFO` or `DEBUG`), and each use of `-q` will decrement it (towards `ERROR` or `CRITICAL`).
 
 ## Installation
 
