@@ -184,18 +184,17 @@ def property_changed(typ, data, _, path):
         ret = subprocess.Popen(script, env=script_env).wait()
 
 
-def sd_notify(state, unset_environment=False):
+def sd_notify(unset_environment=False, **kwargs):
     """Systemd sd_notify implementation for Python.
-    Note: 'state' argument should be a dictionary.
-    """
-    if not state:
+    Note: kwargs should contain the state to send to systemd"""
+    if not kwargs:
         log("sd_notify called with no state specified!")
         return -errno.EINVAL
     sock = None
     try:
         # Turn state, a dictionary, into a properly formatted string where
         # each 'key=val' combo in the dictionary is separated by a \n
-        state_str = '\n'.join(['{0}={1}'.format(key,val) for (key,val) in state.items()])
+        state_str = '\n'.join(['{0}={1}'.format(key,val) for (key,val) in kwargs.items()])
         env = os.environ.get('NOTIFY_SOCKET', None)
         if not env:
             # Process was not invoked with systemd
@@ -240,6 +239,6 @@ if __name__ == '__main__':
     # main loop
     mainloop = glib.MainLoop()
     # Signal to systemd that service is runnning
-    sd_notify(dict([('READY', 1)]))
+    sd_notify(READY=1)
     mainloop.run()
 
