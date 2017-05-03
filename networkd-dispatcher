@@ -227,7 +227,7 @@ class Dispatcher(object):
 
         state = data.get('OperationalState', None)
         if state is not None:
-            self.handle_state(iface_name, state)
+            self.handle_state(iface_name, str(state))
 
 
 def main():
