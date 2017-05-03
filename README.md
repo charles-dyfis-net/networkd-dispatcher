@@ -98,16 +98,6 @@ Create the appropriate directory structure:
 Install networkd-dispatcher.service and start it. If networkd-dispatcher was not copied to /usr/bin, then edit service file to reflect the appropriate path.
 
 
-### TODO
-
-- [ ] create manpage
-
-- [ ] allow running scripts as non-root user (specify user in a .conf file)
-
-- [ ] add conf file (/etc/networkd-dispatcher/config) for storing custom configuration
-
-- [ ] more stuff to come, I'm sure of it!
-
 ## Contributors
 
 - craftyguy (Clayton Craft)
