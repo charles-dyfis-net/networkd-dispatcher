@@ -70,6 +70,11 @@ Some further notes:
 - The intended use case of `--run-startup-triggers` is race-condition avoidance: Ensuring that triggers are belatedly run even if networkd-dispatcher is invoked after systemd-networkd has already started an interface.
 - The default log level is `WARNING`. Each use of `-v` will increment the log level (towards `INFO` or `DEBUG`), and each use of `-q` will decrement it (towards `ERROR` or `CRITICAL`).
 
+### Systemd Service
+
+There is an included systemd service file, `networkd-dispatcher.service`, which can be used to run networkd-dispatcher as a service. To specify command line options for the service, add them to a variable `networkd_dispatcher_args` in `/etc/conf.d/networkd-dispatcher.conf`. A template conf file is included.
+
+
 ## Installation
 
 ### Arch Linux
@@ -94,6 +99,8 @@ Copy networkd-dispatcher to /usr/bin.
 Create the appropriate directory structure:
 
 ```$ sudo mkdir -p /etc/networkd-dispatcher/{routable,dormant,no-carrier,off}.d```
+
+Install networkd-dispatcher.conf to /etc/conf.d.
 
 Install networkd-dispatcher.service and start it. If networkd-dispatcher was not copied to /usr/bin, then edit service file to reflect the appropriate path.
 
