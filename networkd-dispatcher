@@ -17,7 +17,6 @@ import errno
 import json
 import subprocess
 import os
-import signal
 import socket
 import stat
 import logging
@@ -102,10 +101,10 @@ def scripts_in_path(path):
             entry = os.stat(pathname)
             # Make sure script can be executed
             if not stat.S_IXUSR & entry.st_mode:
-                print("Unable to execute script, check file mode: " + pathname)
+                logger.error("Unable to execute script, check file mode: %s", pathname)
             # Make sure script is owned by root
             elif entry.st_uid != 0 or entry.st_gid != 0:
-                print("Unable to execute script, check file perms: " + pathname)
+                logger.error("Unable to execute script, check file perms: %s", pathname)
             else:
                 script_list.append(pathname)
     return sorted(script_list)
@@ -251,7 +250,7 @@ def sd_notify(unset_environment=False, **kwargs):
     """Systemd sd_notify implementation for Python.
     Note: kwargs should contain the state to send to systemd"""
     if not kwargs:
-        print("sd_notify called with no state specified!")
+        logger.error("sd_notify called with no state specified!")
         return -errno.EINVAL
     sock = None
     try:
@@ -263,15 +262,15 @@ def sd_notify(unset_environment=False, **kwargs):
             # Process was not invoked with systemd
             return -errno.EINVAL
         if env[0] not in ('/', '@'):
-            print("Unable to determine NOTIFY_SOCKET")
+            logger.warning("NOTIFY_SOCKET is set, but does not contain a legitimate value")
             return -errno.EINVAL
         if env[0] == '@':
             env = '\0' + env[1:]
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
         if sock.sendto(bytearray(state_str, 'utf-8'), env) > 0:
             return 1
-    except Exception as e:
-        print(e)
+    except Exception: # pylint: disable=broad-except
+        logger.exception("Ignoring unexpected error during sd_notify() invocation")
 
     if sock:
         sock.close()
