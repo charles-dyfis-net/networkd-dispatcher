@@ -2,7 +2,7 @@
 Description=Dispatcher daemon for systemd-networkd
 
 [Service]
-Type=simple
+Type=notify
 ExecStart=/usr/bin/networkd-dispatcher
 
 [Install]
