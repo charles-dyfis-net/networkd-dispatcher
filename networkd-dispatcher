@@ -184,7 +184,7 @@ def property_changed(typ, data, _, path):
         ret = subprocess.Popen(script, env=script_env).wait()
 
 
-def sd_notify(unset_environment, state):
+def sd_notify(state, unset_environment=False):
     """Systemd sd_notify implementation for Python.
     Note: 'state' argument should be a dictionary.
     """
@@ -240,6 +240,6 @@ if __name__ == '__main__':
     # main loop
     mainloop = glib.MainLoop()
     # Signal to systemd that service is runnning
-    sd_notify(False, dict([('READY', 1)]))
+    sd_notify(dict([('READY', 1)]))
     mainloop.run()
 
