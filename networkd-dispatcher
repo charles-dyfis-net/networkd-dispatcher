@@ -15,29 +15,29 @@ import argparse
 import collections
 import errno
 import json
-import subprocess
+import logging
 import os
 import socket
 import stat
-import logging
+import subprocess
+import sys
 
 from gi.repository import GLib as glib
 
 import dbus
 import dbus.mainloop.glib
 
-# FIXME: Why are we doing this?
-def resolve_path(path_list):
-    for path in path_list:
+# Detect up-front which commands we use exist
+def resolve_path(cmdname):
+    for dirname in os.environ['PATH'].split(':'):
+        path = os.path.join(dirname, cmdname)
         if os.path.exists(path):
             return path
-    return path_list[0].rsplit('/', 1)[-1]
+    return None
 
 # Constants
-NETWORKCTL_PATHS = ['/usr/bin/networkctl', '/bin/networkctl']
-IWCONFIG_PATHS = ['/usr/bin/iwconfig', '/sbin/iwconfig']
-NETWORKCTL = resolve_path(NETWORKCTL_PATHS)
-IWCONFIG = resolve_path(IWCONFIG_PATHS)
+NETWORKCTL = resolve_path('networkctl')
+IWCONFIG = resolve_path('iwconfig')
 DEFAULT_SCRIPT_DIR = '/etc/networkd-dispatcher'
 
 LOG_FORMAT = '%(levelname)s:%(message)s'
@@ -87,6 +87,9 @@ def get_networkctl_status(iface_name):
 
 def get_wlan_essid(iface_name):
     """Given an interface name, return its ESSID"""
+    if IWCONFIG is None:
+        logger.error('Unable to retrieve ESSID for wireless interface %r: iwconfig not installed')
+        return ''
     out = subprocess.check_output([IWCONFIG, '--', iface_name])
     line = out.split(b'\n')[0].decode('ascii')
     essid = line[line.find('ESSID:')+7:-3]
@@ -313,6 +316,11 @@ def main():
     logging.basicConfig(level=log_level, format=LOG_FORMAT)
 
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+
+    if NETWORKCTL is None:
+        logger.critical('Unable to find networkctl command; cannot continue')
+        sd_notify(ERRNO=errno.ENOENT)
+        sys.exit(1)
 
     dispatcher = Dispatcher(script_dir=args.script_dir)
     dispatcher.register()
