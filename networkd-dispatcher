@@ -59,10 +59,10 @@ NetworkctlListState = collections.namedtuple('NetworkctlListState', ['idx', 'lin
 def get_networkctl_list():
     """Update the mapping from interface index numbers to state"""
     out = subprocess.check_output([NETWORKCTL, 'list', '--no-pager', '--no-legend'])
-    result = {}
+    result = []
     for line in out.split(b'\n')[:-1]:
         fields = line.decode('ascii').split()
-        result[int(fields[0])] = NetworkctlListState(*fields)
+        result.append(NetworkctlListState(*fields))
     return result
 
 def get_networkctl_status(iface_name):
@@ -122,21 +122,23 @@ def parse_address_strings(addrs):
             ip4addrs.append(addr)
     return AddressList(ip4addrs, ip6addrs)
 
-def get_interface_data(iface_name, state):
-    """Return JSON-serializable data representing all state needed to run hooks for the given interface"""
-    data = {}
-    if state == 'routable':
-        data.update(get_networkctl_status(iface_name))
-    if data['Type'] == 'wlan':
-        data['ESSID'] = get_wlan_essid(iface_name)
-    data['State'] = state
-    return data
-
 class Dispatcher(object):
     def __init__(self, script_dir=DEFAULT_SCRIPT_DIR):
-        self.iface_map = get_networkctl_list()
+        self.iface_list = None
+        self.ifaces_by_idx = None
+        self.ifaces_by_name = None
         self.prior_states = {}
         self.script_dir = script_dir
+        self._interface_scan()
+
+    def __repr__(self):
+        return '<Dispatcher(%r)>' % (self.__dict__,)
+
+    def _interface_scan(self):
+        self.iface_list = get_networkctl_list()
+        self.ifaces_by_idx = dict([int(i.idx), i] for i in self.iface_list)
+        self.ifaces_by_name = dict([i.link, i] for i in self.iface_list)
+        logger.debug('Performed interface scan; state: %r', self)
 
     def register(self, bus=None):
         """Register this dispatcher to handle events from the given bus"""
@@ -150,10 +152,19 @@ class Dispatcher(object):
     def trigger_all(self):
         """Immediately invoke all scripts for the last known (or initial) states for each interface"""
         logger.info('Triggering scripts for last-known state for all interfaces')
-        for iface in self.iface_map.values():
+        for iface in self.iface_list:
             iface_name = iface.link
             state = self.prior_states.get(iface_name, iface.operational)
             self.handle_state(iface_name, state)
+
+    def get_interface_data(self, iface_name, state):
+        """Return JSON-serializable data representing all state needed to run hooks for the given interface"""
+        data = {'Type': self.ifaces_by_name[iface_name].type, 'State': state}
+        if state == 'routable':
+            data.update(get_networkctl_status(iface_name))
+        if data.get('Type') == 'wlan':
+            data['ESSID'] = get_wlan_essid(iface_name)
+        return data
 
     def get_scripts_list(self, state):
         """Return scripts for the given state"""
@@ -177,7 +188,7 @@ class Dispatcher(object):
             return
 
         # Collect data
-        data = get_interface_data(iface_name, state)
+        data = self.get_interface_data(iface_name, state)
         (v4addrs, v6addrs) = parse_address_strings(data.get('Address', ()))
 
         # Set script env. variables
@@ -193,7 +204,6 @@ class Dispatcher(object):
         })
 
         # run all valid scripts in the list
-        #TODO: At some point, check return code and handle errors
         logger.debug('Running triggers for interface %r entering state %r with environment %r', iface_name, state, script_env)
         for script in script_list:
             ret = subprocess.Popen(script, env=script_env).wait()
@@ -203,23 +213,23 @@ class Dispatcher(object):
     def _receive_signal(self, typ, data, _, path):
         logger.debug('Signal: typ=%r, data=%r, path=%r', typ, data, path)
         if typ != 'org.freedesktop.network1.Link':
-            logger.error('Ignoring signal received with unexpected typ %r', typ)
+            logger.debug('Ignoring signal received with unexpected typ %r', typ)
             return
         if not path.startswith('/org/freedesktop/network1/link/_'):
-            logger.error('Ignoring signal received with unexpected path %r', path)
+            logger.warning('Ignoring signal received with unexpected path %r', path)
             return
 
         # Detect necessity of reloading map *before* filtering ignored states
         # http://thread.gmane.org/gmane.comp.sysutils.systemd.devel/36460
         idx = path[32:]
         idx = int(chr(int(idx[:2], 16)) + idx[2:])
-        if idx not in self.iface_map:
+        if idx not in self.ifaces_by_idx:
             # Try to reload configuration if even an ignored message is seen
             logger.warning('Unknown index %r seen, reloading interface list', idx)
-            self.iface_map = get_networkctl_list()
+            self._interface_scan()
 
         try:
-            iface_name = self.iface_map[idx].link
+            iface_name = self.ifaces_by_idx[idx].link
         except KeyError:
             # Presumptive race condition: We reloaded, but the index is still invalid
             logger.error('Unknown interface index %r seen even after reload', idx)
@@ -227,7 +237,10 @@ class Dispatcher(object):
 
         state = data.get('OperationalState', None)
         if state is not None:
-            self.handle_state(iface_name, str(state))
+            try:
+                self.handle_state(iface_name, str(state))
+            except Exception: # pylint: disable=broad-except
+                logger.exception('Error handling notification for interface %r entering state %s', iface_name, state)
 
 
 def main():
