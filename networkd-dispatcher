@@ -157,7 +157,10 @@ class Dispatcher(object):
         for iface in self.iface_list:
             iface_name = iface.link
             state = self.prior_states.get(iface_name, iface.operational)
-            self.handle_state(iface_name, state)
+            try:
+                self.handle_state(iface_name, state)
+            except Exception: # pylint: disable=broad-except
+                logger.exception('Error handling initial for interface %r in state %s', iface_name, state)
 
     def get_interface_data(self, iface_name, state):
         """Return JSON-serializable data representing all state needed to run hooks for the given interface"""
@@ -208,6 +211,7 @@ class Dispatcher(object):
         # run all valid scripts in the list
         logger.debug('Running triggers for interface %r entering state %r with environment %r', iface_name, state, script_env)
         for script in script_list:
+            logger.info('Invoking %r', script)
             ret = subprocess.Popen(script, env=script_env).wait()
             if ret != 0:
                 logger.warning('Exit status %r from script %r invoked with environment %r', ret, script, script_env)
@@ -319,6 +323,7 @@ def main():
     mainloop = glib.MainLoop()
     # Signal to systemd that service is runnning
     sd_notify(READY=1)
+    logger.info('Startup complete')
     mainloop.run()
 
 if __name__ == '__main__':
