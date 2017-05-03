@@ -31,7 +31,7 @@ def resolve_path(path_list):
     for path in path_list:
         if os.path.exists(path):
             return path
-    return None
+    return path_list[0].rsplit('/', 1)[-1]
 
 # Constants
 NETWORKCTL_PATHS = ['/usr/bin/networkctl', '/bin/networkctl']
