@@ -13,9 +13,12 @@ from __future__ import print_function, division, generators, unicode_literals
 
 import argparse
 import collections
+import errno
 import json
 import subprocess
 import os
+import signal
+import socket
 import stat
 import logging
 
@@ -243,6 +246,42 @@ class Dispatcher(object):
                 logger.exception('Error handling notification for interface %r entering state %s', iface_name, state)
 
 
+
+def sd_notify(unset_environment=False, **kwargs):
+    """Systemd sd_notify implementation for Python.
+    Note: kwargs should contain the state to send to systemd"""
+    if not kwargs:
+        print("sd_notify called with no state specified!")
+        return -errno.EINVAL
+    sock = None
+    try:
+        # Turn state, a dictionary, into a properly formatted string where
+        # each 'key=val' combo in the dictionary is separated by a \n
+        state_str = '\n'.join(['{0}={1}'.format(key,val) for (key,val) in kwargs.items()])
+        env = os.environ.get('NOTIFY_SOCKET', None)
+        if not env:
+            # Process was not invoked with systemd
+            return -errno.EINVAL
+        if env[0] not in ('/', '@'):
+            print("Unable to determine NOTIFY_SOCKET")
+            return -errno.EINVAL
+        if env[0] == '@':
+            env = '\0' + env[1:]
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        if sock.sendto(bytearray(state_str, 'utf-8'), env) > 0:
+            return 1
+    except Exception as e:
+        print(e)
+
+    if sock:
+        sock.close()
+    if unset_environment:
+        if 'NOTIFY_SOCKET' in os.environ:
+            del os.environ['NOTIFY_SOCKET']
+
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description='networkd dispatcher daemon')
     ap.add_argument('-S', '--script-dir', action='store', default=DEFAULT_SCRIPT_DIR,
@@ -279,6 +318,8 @@ def main():
 
     # main loop
     mainloop = glib.MainLoop()
+    # Signal to systemd that service is runnning
+    sd_notify(READY=1)
     mainloop.run()
 
 if __name__ == '__main__':
